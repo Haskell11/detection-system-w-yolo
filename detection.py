@@ -1,20 +1,31 @@
 import cv2
+import yaml
 from ultralytics import YOLO
 import numpy as np
 import torch
-import airsim # способ ввода видео напрямую с камеры коптера из AirSim 
+#import airsim # способ ввода видео напрямую с камеры коптера из AirSim 
 from collections import defaultdict
+
+
 
 # Проверка наличия GPU и установка устройства
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Используемое устройство: {device}')
 
 # Загрузка моделей YOLOv8 для детекции и сегментации
-detection_model = YOLO('yolov8m.pt') # Модель для детекции
+#detection_model = YOLO('yolov8m.pt') # Модель для детекции
 #segmentation_model = YOLO('yolov8s-seg.pt')  # Модель для сегментации
-
-detection_model.to(device)
 #segmentation_model.to(device)
+#detection_model.to(device)
+
+# Загрузка моделей YOLO с обученными весами
+model_detection = YOLO('E:\diplom\yolo8 detection\Runs\detect\Train4\weights\Best.pt')
+#segmentation_model = YOLO('E:\diplom\yolo8 detection\Runs\detect\Train\weights\Best.pt')  # Модель для сегментации
+
+model_detection.to(device)
+#segmentation_model.to(device)
+
+
 
 # Цвета для аннотаций
 colors = [
@@ -23,6 +34,15 @@ colors = [
     (0, 128, 0), (128, 0, 128), (0, 128, 128), (0, 0, 128), (72, 61, 139),
     (47, 79, 79), (47, 79, 47), (0, 206, 209), (148, 0, 211), (255, 20, 147)
 ]
+
+# Функция для загрузки конфигурации датасета из YAML-файла
+def load_yaml_config(yaml_file):
+    with open(yaml_file, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
+
+# Загрузка конфигурации датасета
+dataset_config = load_yaml_config('E:\diplom\yolo8 detection\my_dataset_yolo\data.yaml')
 
 # История трекинга для траекторий
 #track_history = defaultdict(lambda: [])
@@ -54,9 +74,8 @@ if not capture.isOpened():
 frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
 fps = capture.get(cv2.CAP_PROP_FPS)
-
 # Определение кодека и создание объекта VideoWriter для записи видео
-output_path = 'E:\Bandicam\Videos\kopter_flight_detected2.mp4'
+output_path = 'E:\Bandicam\Videos\kopter_flight_detected3.mp4'
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
@@ -86,7 +105,10 @@ while True:
     frame_resized = cv2.resize(frame, (640, 360))
 
     # Обработка кадра с помощью модели YOLOv8 для детекции
-    detection_results = detection_model(frame_resized, device=device)[0]
+    detection_results = model_detection(frame_resized, device=device)[0]
+
+     # Обработка кадра с помощью модели YOLOv8 для сегментации
+    #segmentation_results = segmentation_model(frame_resized, device=device)[0]
 
     for class_id, box, conf in zip(detection_results.boxes.cls.cpu().numpy(),
                                    detection_results.boxes.xyxy.cpu().numpy().astype(np.int32),
@@ -110,15 +132,18 @@ while True:
     # Обработка кадра с помощью модели YOLOv8 для сегментации
    # segmentation_results = segmentation_model(frame_resized, device=device)[0]
 
-    #if segmentation_results.masks is not None:
-       # for i, mask in enumerate(segmentation_results.masks.data.cpu().numpy()):
-           # class_id = segmentation_results.boxes.cls.cpu().numpy()[i]
-            #color = colors[int(class_id) % len(colors)]
-            #resized_mask = cv2.resize(mask, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST)
-           # color_mask = np.zeros_like(frame)
-            #color_mask[resized_mask > 0] = color
-            #frame = cv2.addWeighted(frame, 1.0, color_mask, 0.5, 0)
-    
+     # Обработка сегментации
+   # if segmentation_results.masks is not None:
+      #  masks = segmentation_results.masks.data.cpu().numpy()
+       # classes = segmentation_results.boxes.cls.cpu().numpy()
+
+       # for i, mask in enumerate(masks):
+        #    class_id = int(classes[i])
+        #    color = colors[class_id % len(colors)]
+         #   resized_mask = cv2.resize(mask, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST)
+          #  color_mask = np.zeros_like(frame)
+          #  color_mask[resized_mask > 0] = color
+          #  frame = cv2.addWeighted(frame, 1.0, color_mask, 0.5, 0)
 
         
     # Запись обработанного кадра в выходное видео
@@ -132,6 +157,9 @@ while True:
         break
 
 # Освобождение ресурсов
+capture.release()
+out.release()
+cv2.destroyAllWindows()
 capture.release()
 out.release()
 cv2.destroyAllWindows()
